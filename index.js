@@ -89,10 +89,7 @@ try{
             // Password is correct
             jwt.sign({ username, id: data._id }, secret, {}, (err, token) => {
                 if (err) throw err;
-                res.cookie("token", token).json({
-                    id:data._id,
-                    username,token
-                 });
+                res.json({token});
             });
             
            
@@ -118,7 +115,8 @@ try{
 try {
  app.get('/profile', async (req, res) => {
    try {
-      const {token} = req.cookies;
+    const authHeader = req.headers['authorization']
+    const token = authHeader && authHeader.split(' ')[1]
       //res.json(token)
      
 
@@ -162,7 +160,8 @@ app.post('/post',upload.single('files'),async(req,res)=>{
     }
 
 
-    const{token}=req.cookies
+    const authHeader = req.headers['authorization']
+  const token = authHeader && authHeader.split(' ')[1]
 
     jwt.verify(token,secret,{},async(err,info)=>{
         if (err) {
@@ -210,7 +209,8 @@ app.put('/post', upload.single('file'), async (req, res) => {
         fs.renameSync(path, newPath);
       }
   
-      const { token } = req.cookies;
+      const authHeader = req.headers['authorization']
+  const token = authHeader && authHeader.split(' ')[1]
   
       jwt.verify(token, secret, {}, async (err, info) => {
         if (err) {
@@ -259,7 +259,8 @@ app.put('/post', upload.single('file'), async (req, res) => {
       }
   
       
-      const { token } = req.cookies;
+      const authHeader = req.headers['authorization']
+      const token = authHeader && authHeader.split(' ')[1]
       jwt.verify(token, secret, {}, async (err, info) => {
         if (err) {
           console.error('JWT Verification Error:', err.message);
