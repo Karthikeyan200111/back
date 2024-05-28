@@ -89,7 +89,7 @@ try{
             // Password is correct
             jwt.sign({ username, id: data._id }, secret, {}, (err, token) => {
                 if (err) throw err;
-                return res.status(200).json({token});
+                return res.status(200).send({token});
             });
             
            
