@@ -8,7 +8,7 @@ const bcrypt = require('bcrypt');
 const jwt=require('jsonwebtoken');
 const cookieParser=require("cookie-parser")
 const multer  = require('multer')
-const upload = multer({ dest: 'uploads/' })
+
 const fs=require('fs')
 const Post =require('./models/Post')
 const url = process.env.MONGOURL
@@ -37,6 +37,19 @@ mongoose.connect(`${url}`)
 //   res.json({msg:"Hello world"})
 // })
 //register 
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + '-' + file.originalname);
+  }
+});
+
+const upload = multer({ storage: storage });
+
 try {
   app.post('/register', async (req, res) => {
       const { username, password, phoneNumber } = req.body;
@@ -145,45 +158,42 @@ app.post('/logout',(req,res)=>{
     res.cookie('token','').json('ok')
 })
 
-app.post('/post',upload.single('files'),async(req,res)=>{
-    
-
-   
-      const {originalname,path}=req.file
-    const parts=originalname.split('.')
-    const ext=parts[parts.length-1]
-    const newPath=path+'.'+ext
-    fs.renameSync(path,newPath)
-
+app.post('/post', upload.single('photo'), async (req, res) => {
+  try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ error: 'No photo uploaded' });
     }
 
+    const { title, summary, content } = req.body;
+    const photoPath = req.file.path;
 
-    const authHeader = req.headers['authorization']
-  const token = authHeader && authHeader.split(' ')[1]
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
 
-    jwt.verify(token,secret,{},async(err,info)=>{
-        if (err) {
-            console.error('JWT Verification Error:', err.message);
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
-        const{title,summary,content}=req.body
-   const postDoc= await Post.create({
+    jwt.verify(token, secret, {}, async (err, info) => {
+      if (err) {
+        console.error('JWT Verification Error:', err.message);
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const postDoc = await Post.create({
         title,
         summary,
         content,
-        files:newPath,
-        author:info.id
-        
-    })
-    res.json(postDoc)
-    })
-    
-    
-   
-})
+        photo: photoPath,
+        author: info.id,
+      });
+
+      res.json(postDoc);
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/post',async(req,res)=>{
 
