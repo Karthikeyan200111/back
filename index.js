@@ -8,7 +8,7 @@ const bcrypt = require('bcrypt');
 const jwt=require('jsonwebtoken');
 const cookieParser=require("cookie-parser")
 const multer  = require('multer')
-
+const upload = multer({ dest: 'uploads/' })
 const fs=require('fs')
 const Post =require('./models/Post')
 const url = process.env.MONGOURL
@@ -37,19 +37,6 @@ mongoose.connect(`${url}`)
 //   res.json({msg:"Hello world"})
 // })
 //register 
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + '-' + file.originalname);
-  }
-});
-
-const upload = multer({ storage: storage });
-
 try {
   app.post('/register', async (req, res) => {
       const { username, password, phoneNumber } = req.body;
@@ -158,42 +145,45 @@ app.post('/logout',(req,res)=>{
     res.cookie('token','').json('ok')
 })
 
-app.post('/post', upload.single('file'), async (req, res) => {
-  try {
+app.post('/post',upload.single('files'),async(req,res)=>{
+    
+
+   
+      const {originalname,path}=req.file
+    const parts=originalname.split('.')
+    const ext=parts[parts.length-1]
+    const newPath=path+'.'+ext
+    fs.renameSync(path,newPath)
+
     if (!req.file) {
-      return res.status(400).json({ error: 'No photo uploaded' });
+      return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { title, summary, content } = req.body;
-    const photoPath = req.file.path;
 
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    const authHeader = req.headers['authorization']
+  const token = authHeader && authHeader.split(' ')[1]
 
-    if (!token) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    jwt.verify(token,secret,{},async(err,info)=>{
+        if (err) {
+            console.error('JWT Verification Error:', err.message);
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
 
-    jwt.verify(token, secret, {}, async (err, info) => {
-      if (err) {
-        console.error('JWT Verification Error:', err.message);
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const postDoc = await Post.create({
+        const{title,summary,content}=req.body
+   const postDoc= await Post.create({
         title,
         summary,
         content,
-        photo: photoPath,
-        author: info.id,
-      });
-
-      res.json(postDoc);
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+        files:newPath,
+        author:info.id
+        
+    })
+    res.json(postDoc)
+    })
+    
+    
+   
+})
 
 app.get('/post',async(req,res)=>{
 
@@ -207,61 +197,56 @@ app.get('/post/:id',async(req,res)=>{
 
 })
 
-// Update your route to use Multer for file upload
 app.put('/post', upload.single('file'), async (req, res) => {
-  try {
-    let newPath = null;
-
-    // Handle file upload
-    if (req.file) {
-      const { originalname, filename, path } = req.file;
-      newPath = path; // Using Multer's generated path directly
-    }
-
-    // Authenticate user
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    jwt.verify(token, secret, {}, async (err, info) => {
-      if (err) {
-        console.error('JWT Verification Error:', err.message);
-        return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      let newPath = null;
+  
+      if (req.file) {
+        const { originalname, path } = req.file;
+        const parts = originalname.split('.');
+        const ext = parts[parts.length - 1];
+        newPath = path + '.' + ext;
+        fs.renameSync(path, newPath);
       }
-
-      // Extract data from request body
-      const { id, title, summary, content } = req.body;
-
-      // Find the post by ID
-      const postDoc = await Post.findById(id);
-
-      if (!postDoc) {
-        return res.status(404).json({ error: 'Post not found' });
-      }
-
-      // Check if the user is authorized to update the post
-      const isAuthor = JSON.stringify(postDoc.author) === JSON.stringify(info.id);
-
-      if (!isAuthor) {
-        return res.status(403).json({ error: 'You are not authorized to update this post' });
-      }
-
-      // Update the post data
-      await postDoc.updateOne({
-        title,
-        summary,
-        content,
-        files: newPath ? newPath : postDoc.files,
+  
+      const authHeader = req.headers['authorization']
+  const token = authHeader && authHeader.split(' ')[1]
+  
+      jwt.verify(token, secret, {}, async (err, info) => {
+        if (err) {
+          console.error('JWT Verification Error:', err.message);
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+  
+        const { id, title, summary, content } = req.body;
+  
+        const postDoc = await Post.findById(id);
+  
+        if (!postDoc) {
+          return res.status(404).json({ error: 'Post not found' });
+        }
+  
+        const isAuthor = JSON.stringify(postDoc.author) === JSON.stringify(info.id);
+  
+        if (!isAuthor) {
+          return res.status(403).json({ error: 'You are not authorized to update this post' });
+        }
+  
+        await postDoc.updateOne({
+          title,
+          summary,
+          content,
+          files: newPath ? newPath : postDoc.files,
+        });
+  
+    const updatedPost = await Post.findById(id);
+        res.json(updatedPost);
       });
-
-      // Fetch the updated post data
-      const updatedPost = await Post.findById(id);
-      res.json(updatedPost);
-    });
-  } catch (error) {
-    console.error('Error updating post:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
+    } catch (error) {
+      console.error('Error updating post:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
 
   app.delete('/post/:id', async (req, res) => {
     try {
